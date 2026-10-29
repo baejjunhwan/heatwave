@@ -1,0 +1,131 @@
+// ==============================================================================
+// 1. 관심 지역(ROI) 설정 // ==============================================================================
+var korea_emd = ee.FeatureCollection("projects/lateral-plane-500605-i8/assets/emdyy");
+// 광주 북구 행정표준코드(29170)로 필터링하여 ROI로 지정
+var roi = korea_emd.filter(ee.Filter.stringStartsWith('EMD_CD', '29170'));
+
+// ==============================================================================
+// 2. Landsat 8 C2 L2 구름/그림자 마스킹 및 온도 변환 함수 (QA_PIXEL 적용)
+// ==============================================================================
+function prepLandsat8(image) {
+  var qa = image.select('QA_PIXEL');
+  // Bit 3은 구름(Cloud), Bit 4는 구름 그림자(Cloud Shadow)를 의미
+  var cloudShadowBitMask = (1 << 4);
+  var cloudsBitMask = (1 << 3);
+  var mask = qa.bitwiseAnd(cloudShadowBitMask).eq(0)
+    .and(qa.bitwiseAnd(cloudsBitMask).eq(0));
+
+  // 열적외선 밴드(ST_B10)에 Scale Factor 적용 및 섭씨(℃) 변환
+  var lst = image.select('ST_B10')
+                 .multiply(0.00341802).add(149.0) // 켈빈(K) 온도 변환
+                 .subtract(273.15)                // 섭씨(℃) 온도로 변환
+                 .rename('LST_Celsius');
+
+  return image.addBands(lst).updateMask(mask);
+}
+
+// ==============================================================================
+// 3. 연도별(2020년 vs 2025년) 하절기(5~9월) Max LST 합성
+// ==============================================================================
+var dataset = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+                .filterBounds(roi)
+                .map(prepLandsat8);
+
+var maxLst2020 = dataset.filterDate('2020-05-01', '2020-09-30')
+                        .select('LST_Celsius')
+                        .max()
+                        .clip(roi);
+
+var maxLst2025 = dataset.filterDate('2025-05-01', '2025-09-30')
+                        .select('LST_Celsius')
+                        .max()
+                        .clip(roi);
+
+// ==============================================================================
+// 4. 북구 전체의 평균 Max LST 도출 (배경 기후 기준점 설정)
+// ==============================================================================
+var mean2020_dict = maxLst2020.reduceRegion({
+  reducer: ee.Reducer.mean(),
+  geometry: roi,
+  scale: 30,
+  maxPixels: 1e9
+});
+var mean2020_val = ee.Number(mean2020_dict.get('LST_Celsius'));
+
+var mean2025_dict = maxLst2025.reduceRegion({
+  reducer: ee.Reducer.mean(),
+  geometry: roi,
+  scale: 30,
+  maxPixels: 1e9
+});
+var mean2025_val = ee.Number(mean2025_dict.get('LST_Celsius'));
+
+// 콘솔에 연도별 북구 전체 평균 온도 출력 (논문에 기재할 수치)
+print('2020년 북구 평균 Max LST (℃):', mean2020_val);
+print('2025년 북구 평균 Max LST (℃):', mean2025_val);
+
+// ==============================================================================
+// 5. 상대 지표면온도(RLST) 및 변화량(Delta RLST) 산출
+// ==============================================================================
+// 각 픽셀값에서 해당 연도의 북구 전체 평균값을 차감
+var rlst2020 = maxLst2020.subtract(mean2020_val).rename('RLST_2020');
+var rlst2025 = maxLst2025.subtract(mean2025_val).rename('RLST_2025');
+
+// 변화량 산출: 2025년 RLST - 2020년 RLST
+var deltaRlst = rlst2025.subtract(rlst2020).rename('Delta_RLST');
+
+// ==============================================================================
+// 6. 결과 시각화 (Map)
+// ==============================================================================
+Map.centerObject(roi, 12);
+
+// 시각화 팔레트 설정
+var rlstVis = {min: -5, max: 10, palette: ['blue', 'cyan', 'green', 'yellow', 'red']};
+var deltaVis = {min: -5, max: 5, palette: ['blue', 'white', 'red']}; // 파란색(상대적 냉각), 빨간색(상대적 가열)
+
+Map.addLayer(rlst2020, rlstVis, '2020 Relative LST');
+Map.addLayer(rlst2025, rlstVis, '2025 Relative LST');
+Map.addLayer(deltaRlst, deltaVis, 'Delta Relative LST (2025 - 2020)');
+
+// 북구 행정동 경계선 하얀색으로 덧그리기 (시각적 확인용)
+var empty = ee.Image().byte();
+var dongBorders = empty.paint({featureCollection: roi, color: 1, width: 2});
+Map.addLayer(dongBorders.visualize({palette: ['#FFFFFF']}), {}, 'Buk-gu Dong Borders');
+
+// ==============================================================================
+// 7. Google Drive로 Export (다중 밴드 TIF - 2020년, 2025년, 변화량 모두 포함)
+// ==============================================================================
+// 3개의 데이터를 하나의 다중 밴드(Multi-band) 이미지로 묶기
+var combinedRLST_image = rlst2020.addBands(rlst2025).addBands(deltaRlst);
+
+Export.image.toDrive({
+  image: combinedRLST_image,
+  description: 'Bukgu_RLST_All_Bands_Final',
+  folder: 'GEE_Output',
+  scale: 30,
+  region: roi,
+  maxPixels: 1e13
+});
+// ==============================================================================
+// 8. 법정동별 상대 지표면온도(RLST) 평균값 추출 및 엑셀(CSV) 다운로드
+// ==============================================================================
+// 2020년, 2025년 RLST와 변화량(Delta) 밴드를 하나로 합침
+var combinedRLST = rlst2020.addBands(rlst2025).addBands(deltaRlst);
+
+// 북구 법정동(roi) 단위로 구역 통계(평균값) 계산
+var rlstByDong = combinedRLST.reduceRegions({
+  collection: roi,
+  reducer: ee.Reducer.mean(), 
+  scale: 30, // Landsat 해상도
+  crs: 'EPSG:4326'
+});
+
+// Google Drive로 엑셀(CSV) 내보내기 Task 생성
+Export.table.toDrive({
+  collection: rlstByDong,
+  description: 'Bukgu_Dong_Relative_LST_Final',
+  folder: 'GEE_Exports',
+  fileFormat: 'CSV',
+  // 필요한 열만 지정 (행정코드, 동이름, 20년 상대온도, 25년 상대온도, 변화량)
+  selectors: ['EMD_CD', 'EMD_ENG_NM', 'RLST_2020', 'RLST_2025', 'Delta_RLST']
+});

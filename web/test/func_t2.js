@@ -1,0 +1,22 @@
+const { chromium } = require('playwright');
+(async () => {
+  const b = await chromium.launch(); const errs = []; const res = {};
+  const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true, permissions: ['clipboard-read', 'clipboard-write'] });
+  const p = await ctx.newPage(); p.on('pageerror', (e) => errs.push(e.message));
+  await p.route(/fonts\.(googleapis|gstatic)\.com|arcgisonline|openstreetmap/, (r) => r.abort());
+  await p.goto('http://localhost:8767/#g91_87'); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(800);
+  res.deepCell = [await p.isVisible('#detail'), await p.textContent('#dName'), await p.evaluate(() => document.querySelector('.ranks b').textContent)];
+  await p.click('#goOA'); await p.waitForTimeout(800);
+  res.toOA = [await p.textContent('#dCode'), await p.evaluate(() => document.querySelector('.ranks b').textContent)];
+  await p.click('#goT2'); await p.waitForTimeout(800);
+  res.backT2 = await p.evaluate(() => document.querySelector('#trackSeg [aria-pressed=true]').dataset.track);
+  await p.click('#tab-table'); await p.waitForTimeout(300);
+  res.t2rows = await p.locator('#tblBody tr').count();
+  await p.fill('#tq', '운암2동'); await p.waitForTimeout(200); res.t2rowsFiltered = await p.locator('#tblBody tr').count();
+  const [dl] = await Promise.all([p.waitForEvent('download'), p.click('#dlCsv')]);
+  const fs = require('fs'); const txt = fs.readFileSync(await dl.path(), 'utf8');
+  res.download = [dl.suggestedFilename(), txt.split('\n').length, txt.split('\n')[0].split(',').length];
+  await p.locator('#tblBody tr').first().focus(); await p.keyboard.press('Enter'); await p.waitForTimeout(600);
+  res.enter = [await p.isVisible('#detail'), await p.evaluate(() => location.hash)];
+  console.log(JSON.stringify(res)); console.log(errs.join('\n') || 'no page errors'); await b.close();
+})();

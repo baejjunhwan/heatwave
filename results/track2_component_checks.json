@@ -1,0 +1,158 @@
+{
+ "N": 1174,
+ "top": 117,
+ "base": {
+  "rho": 1.0,
+  "keep": 117,
+  "dominant": {
+   "old_h": 61,
+   "dRLST": 40,
+   "dNDBI": 16
+  },
+  "var_share": {
+   "dNDBI": 0.336,
+   "old_h": 0.289,
+   "dRLST": 0.375
+  }
+ },
+ "top_mean_z": {
+  "Zn": 0.75,
+  "Zo": 1.15,
+  "Zr": 1.05
+ },
+ "drop_one": {
+  "dNDBI": {
+   "rho": 0.871,
+   "keep": 87,
+   "dominant": {
+    "old_h": 73,
+    "dRLST": 44
+   },
+   "var_share": {
+    "old_h": 0.5,
+    "dRLST": 0.5
+   }
+  },
+  "old_h": {
+   "rho": 0.821,
+   "keep": 57,
+   "dominant": {
+    "dRLST": 78,
+    "dNDBI": 39
+   },
+   "var_share": {
+    "dNDBI": 0.5,
+    "dRLST": 0.5
+   }
+  },
+  "dRLST": {
+   "rho": 0.837,
+   "keep": 73,
+   "dominant": {
+    "old_h": 102,
+    "dNDBI": 15
+   },
+   "var_share": {
+    "dNDBI": 0.5,
+    "old_h": 0.5
+   }
+  }
+ },
+ "NDBI2025_instead_of_dNDBI": {
+  "rho": 0.871,
+  "keep": 88,
+  "dominant": {
+   "old_h": 68,
+   "dRLST": 35,
+   "NDBI25": 14
+  },
+  "var_share": {
+   "NDBI25": 0.373,
+   "old_h": 0.334,
+   "dRLST": 0.293
+  }
+ },
+ "add_green_deficit": {
+  "rho": 0.937,
+  "keep": 98,
+  "dominant": {
+   "old_h": 65,
+   "dRLST": 38,
+   "dNDBI": 11,
+   "green_deficit": 3
+  },
+  "var_share": {
+   "dNDBI": 0.215,
+   "old_h": 0.234,
+   "dRLST": 0.259,
+   "green_deficit": 0.292
+  }
+ },
+ "add_green_loss": {
+  "rho": 0.912,
+  "keep": 82,
+  "dominant": {
+   "old_h": 44,
+   "dRLST": 35,
+   "green_loss": 23,
+   "dNDBI": 15
+  },
+  "var_share": {
+   "dNDBI": 0.299,
+   "old_h": 0.172,
+   "dRLST": 0.268,
+   "green_loss": 0.261
+  }
+ },
+ "green_loss_instead_of_dNDBI": {
+  "rho": 0.826,
+  "keep": 72,
+  "dominant": {
+   "old_h": 48,
+   "dRLST": 38,
+   "green_loss": 31
+  },
+  "var_share": {
+   "green_loss": 0.315,
+   "old_h": 0.309,
+   "dRLST": 0.376
+  }
+ },
+ "floors": {
+  "old_roof_ha_bukgu": {
+   "all": 551.6,
+   "le4F": 431.2,
+   "le5F": 460.9,
+   "floor_missing": 0.4
+  },
+  "top_share_le4F_pct": 91.5,
+  "le4F": {
+   "rho": 0.952,
+   "keep": 104,
+   "dominant": {
+    "old_lo4": 66,
+    "dRLST": 41,
+    "dNDBI": 10
+   },
+   "var_share": {
+    "dNDBI": 0.338,
+    "old_lo4": 0.29,
+    "dRLST": 0.371
+   }
+  },
+  "le5F": {
+   "rho": 0.958,
+   "keep": 106,
+   "dominant": {
+    "old_lo5": 64,
+    "dRLST": 44,
+    "dNDBI": 9
+   },
+   "var_share": {
+    "dNDBI": 0.337,
+    "old_lo5": 0.292,
+    "dRLST": 0.37
+   }
+  }
+ }
+}

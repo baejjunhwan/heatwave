@@ -1,0 +1,163 @@
+// [v3 안내] 이 스크립트의 LST·RLST 산출은 그대로 사용합니다. 다만 NDBI는 지표반사율 변환 없이
+//           원시 화소값(DN)으로 계산되어 있어, 논문 v3의 NDBI·ΔNDBI는 gee/ndbi_reextract_2020_2025.js
+//           (반사율 = DN × 0.0000275 − 0.2 변환 후 산출) 결과를 사용합니다.
+// ==============================================================================
+// 1. 관심 지역(ROI) 설정
+// ==============================================================================
+var korea_emd = ee.FeatureCollection("projects/lateral-plane-500605-i8/assets/emdyy");
+// 광주 북구 행정표준코드(29170)로 필터링하여 ROI로 지정
+var roi = korea_emd.filter(ee.Filter.stringStartsWith('EMD_CD', '29170'));
+
+// ==============================================================================
+// 2. Landsat 8 C2 L2 구름 마스킹, 온도 변환 및 NDBI 추가 함수
+// ==============================================================================
+function prepLandsat8(image) {
+  var qa = image.select('QA_PIXEL');
+  // Bit 3은 구름(Cloud), Bit 4는 구름 그림자(Cloud Shadow)를 의미
+  var cloudShadowBitMask = (1 << 4);
+  var cloudsBitMask = (1 << 3);
+  var mask = qa.bitwiseAnd(cloudShadowBitMask).eq(0)
+    .and(qa.bitwiseAnd(cloudsBitMask).eq(0));
+
+  // 열적외선 밴드(ST_B10)에 Scale Factor 적용 및 섭씨(℃) 변환
+  var lst = image.select('ST_B10')
+                 .multiply(0.00341802).add(149.0) // 켈빈(K) 온도 변환
+                 .subtract(273.15)                // 섭씨(℃) 온도로 변환
+                 .rename('LST_Celsius');
+
+  // NDBI(정규식건조지수) 계산: (SWIR1 - NIR) / (SWIR1 + NIR)
+  // Landsat 8 기준 SWIR1 = SR_B6, NIR = SR_B5
+  var ndbi = image.normalizedDifference(['SR_B6', 'SR_B5']).rename('NDBI');
+
+  // LST와 NDBI 밴드를 원본 이미지에 추가하고 마스킹 적용
+  return image.addBands([lst, ndbi]).updateMask(mask);
+}
+
+// ==============================================================================
+// 3. 연도별(2020년 vs 2025년) 하절기(5~9월) Mean LST & Mean NDBI 합성
+// ==============================================================================
+var dataset = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+                .filterBounds(roi)
+                .map(prepLandsat8);
+
+
+var mean2020 = dataset.filterDate('2020-05-01', '2020-09-30')
+                      .mean()
+                      .clip(roi);
+
+var mean2025 = dataset.filterDate('2025-05-01', '2025-09-30')
+                      .mean()
+                      .clip(roi);
+
+var lst2020 = mean2020.select('LST_Celsius');
+var lst2025 = mean2025.select('LST_Celsius');
+var ndbi2020 = mean2020.select('NDBI');
+var ndbi2025 = mean2025.select('NDBI');
+
+// ==============================================================================
+// 4. 북구 전체의 평균 LST 도출 (배경 기후 기준점 설정)
+// ==============================================================================
+var mean2020_dict = lst2020.reduceRegion({
+  reducer: ee.Reducer.mean(),
+  geometry: roi,
+  scale: 30,
+  maxPixels: 1e9
+});
+var mean2020_val = ee.Number(mean2020_dict.get('LST_Celsius'));
+
+var mean2025_dict = lst2025.reduceRegion({
+  reducer: ee.Reducer.mean(),
+  geometry: roi,
+  scale: 30,
+  maxPixels: 1e9
+});
+var mean2025_val = ee.Number(mean2025_dict.get('LST_Celsius'));
+
+print('2020년 북구 평균 Mean LST (℃):', mean2020_val);
+print('2025년 북구 평균 Mean LST (℃):', mean2025_val);
+
+// ==============================================================================
+// 5. 상대 지표면온도(RLST) 및 변화량(Delta RLST, Delta NDBI) 산출
+// ==============================================================================
+// 각 픽셀값에서 해당 연도의 북구 전체 평균값을 차감
+var rlst2020 = lst2020.subtract(mean2020_val).rename('RLST_2020');
+var rlst2025 = lst2025.subtract(mean2025_val).rename('RLST_2025');
+
+// 변화량 산출
+var deltaRlst = rlst2025.subtract(rlst2020).rename('Delta_RLST');
+var deltaNdbi = ndbi2025.subtract(ndbi2020).rename('Delta_NDBI'); // 건물 밀도 변화량
+
+// 2025년 절대온도 밴드(단기 정책 타겟용)
+var absLst2025 = lst2025.rename('ABS_LST_2025');
+
+// ==============================================================================
+// 6. 결과 시각화 (Map)
+// ==============================================================================
+Map.centerObject(roi, 12);
+
+var rlstVis = {min: -3, max: 8, palette: ['blue', 'cyan', 'green', 'yellow', 'red']};
+var deltaVis = {min: -3, max: 3, palette: ['blue', 'white', 'red']}; 
+var ndbiVis = {min: -0.2, max: 0.2, palette: ['green', 'white', 'brown']}; 
+
+Map.addLayer(rlst2020, rlstVis, '2020 Relative LST', false);
+Map.addLayer(rlst2025, rlstVis, '2025 Relative LST', false);
+Map.addLayer(deltaRlst, deltaVis, 'Delta Relative LST (2025 - 2020)');
+Map.addLayer(deltaNdbi, ndbiVis, 'Delta NDBI (Buildings)', false);
+
+var empty = ee.Image().byte();
+var dongBorders = empty.paint({featureCollection: roi, color: 1, width: 2});
+Map.addLayer(dongBorders.visualize({palette: ['#FFFFFF']}), {}, 'Buk-gu Dong Borders');
+
+// ==============================================================================
+// 7. Google Drive로 Export (각각 개별 파일로 내보내기 - QGIS 가공 최적화)
+// ==============================================================================
+
+// 1. 2020년 상대온도(RLST)
+Export.image.toDrive({
+  image: rlst2020.toFloat(),
+  description: 'Bukgu_1_RLST_2020_Mean',
+  folder: 'GEE_Output',
+  scale: 30,
+  region: roi,
+  maxPixels: 1e13
+});
+
+// 2. 2025년 상대온도(RLST)
+Export.image.toDrive({
+  image: rlst2025.toFloat(),
+  description: 'Bukgu_2_RLST_2025_Mean',
+  folder: 'GEE_Output',
+  scale: 30,
+  region: roi,
+  maxPixels: 1e13
+});
+
+// 3. 상대온도 변화량(Delta RLST) - 중장기 정책 타겟용
+Export.image.toDrive({
+  image: deltaRlst.toFloat(),
+  description: 'Bukgu_3_Delta_RLST_Mean',
+  folder: 'GEE_Output',
+  scale: 30,
+  region: roi,
+  maxPixels: 1e13
+});
+
+// 4. 건물 밀도 변화량(Delta NDBI) - 회귀분석 건물 변수 투입용
+Export.image.toDrive({
+  image: deltaNdbi.toFloat(),
+  description: 'Bukgu_4_Delta_NDBI_Mean',
+  folder: 'GEE_Output',
+  scale: 30,
+  region: roi,
+  maxPixels: 1e13
+});
+
+// 5. 2025년 절대온도 원본 - 단기 구호 정책 타겟용
+Export.image.toDrive({
+  image: absLst2025.toFloat(),
+  description: 'Bukgu_5_ABS_LST_2025_Mean',
+  folder: 'GEE_Output',
+  scale: 30,
+  region: roi,
+  maxPixels: 1e13
+});

@@ -1,0 +1,161 @@
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <h1>광주 북구 폭염 대응 정책지도</h1>
+      <p>집계구 832곳 · 100m 격자 · Landsat 8·Sentinel-2, SGIS 2024 통계, 건물통합정보 · 2020→2025</p>
+    </div>
+    <div class="search" role="search">
+      <input id="q" type="search" autocomplete="off" placeholder="행정동 또는 집계구 코드 검색" aria-label="행정동 또는 집계구 코드 검색" aria-controls="sugg">
+      <div id="sugg" class="sugg" hidden></div>
+    </div>
+  </header>
+
+  <div class="main">
+    <aside class="side">
+      <nav class="tabs" role="tablist" aria-label="보기 선택">
+        <button role="tab" id="tab-prio" aria-controls="pane-prio" aria-selected="true" data-tab="prio">우선순위</button>
+        <button role="tab" id="tab-ind" aria-controls="pane-ind" aria-selected="false" data-tab="ind">지표</button>
+        <button role="tab" id="tab-comp" aria-controls="pane-comp" aria-selected="false" data-tab="comp">위성 비교</button>
+        <button role="tab" id="tab-table" aria-controls="pane-table" aria-selected="false" data-tab="table">순위표</button>
+        <button role="tab" id="tab-about" aria-controls="pane-about" aria-selected="false" data-tab="about">안내</button>
+      </nav>
+
+      <!-- 우선순위 -->
+      <section class="pane" id="pane-prio" role="tabpanel" aria-labelledby="tab-prio">
+        <div class="seg" id="trackSeg" role="group" aria-label="트랙 선택">
+          <button data-track="t1" aria-pressed="true">Track 1<small>단기 구호</small></button>
+          <button data-track="t2" aria-pressed="false">Track 2<small>중장기 개선 · 100m 격자</small></button>
+        </div>
+        <div class="stat" id="prioStat"></div>
+        <p class="lead" id="prioLead"></p>
+        <div class="legend" id="prioLegend"></div>
+        <div class="box policy" id="prioPolicy"></div>
+        <div class="formula" id="prioFormula"></div>
+        <div>
+          <div class="label" id="topLabel">상위 목록</div>
+          <div class="toplist" id="topList"></div>
+          <p class="note" style="margin-top:8px">전체 목록과 지표값은 <button class="linkbtn" data-goto="table">순위표</button>에서 볼 수 있습니다.</p>
+        </div>
+      </section>
+
+      <!-- 지표 -->
+      <section class="pane" id="pane-ind" role="tabpanel" aria-labelledby="tab-ind" hidden>
+        <p class="lead">우선순위 점수를 만든 지표를 하나씩 봅니다. 집계구를 누르면 북구 안에서 몇 번째인지 함께 나옵니다.</p>
+        <div class="ind" id="indList" role="radiogroup" aria-label="지표 선택"></div>
+        <label class="check" id="gridWrap"><input type="checkbox" id="gridChk"><span id="gridTxt">100m 격자로 보기</span></label>
+        <div class="legend" id="indLegend"></div>
+        <div class="box" id="indNote"></div>
+      </section>
+
+      <!-- 위성 비교 -->
+      <section class="pane" id="pane-comp" role="tabpanel" aria-labelledby="tab-comp" hidden>
+        <p class="lead">같은 자리의 2020년과 2025년 Sentinel-2 실사 영상을 겹쳐 봅니다. 지도 가운데 막대를 좌우로 끌면 왼쪽이 2020년, 오른쪽이 2025년입니다.</p>
+        <label class="check"><input type="checkbox" id="compOutline" checked><span>집계구 경계와 현재 트랙 상위 10%(집계구 또는 격자) 표시</span></label>
+        <div>
+          <div class="label">변화가 큰 집계구 바로가기</div>
+          <p class="note" style="margin:4px 0 6px">건물밀도 변화(ΔNDBI)가 큰 순서입니다. 누르면 해당 위치로 이동합니다.</p>
+          <div class="toplist" id="chgList"></div>
+        </div>
+        <p class="note">영상: Copernicus Sentinel-2(가공), 10m 해상도. 영상 바깥은 북구 경계 밖입니다.</p>
+      </section>
+
+      <!-- 순위표 -->
+      <section class="pane" id="pane-table" role="tabpanel" aria-labelledby="tab-table" hidden>
+        <div class="seg" id="trackSeg2" role="group" aria-label="트랙 선택">
+          <button data-track="t1" aria-pressed="true">Track 1</button>
+          <button data-track="t2" aria-pressed="false">Track 2 (격자)</button>
+        </div>
+        <div class="tbl-tools">
+          <input type="search" id="tq" placeholder="행정동·코드로 거르기" aria-label="표 거르기">
+          <div class="seg" id="scopeSeg" role="group" aria-label="범위">
+            <button data-scope="top" aria-pressed="true">상위 10%</button>
+            <button data-scope="all" aria-pressed="false">전체</button>
+          </div>
+        </div>
+        <div class="tbl-tools">
+          <span class="note" id="tblCount"></span>
+          <span style="margin-left:auto;display:flex;gap:6px">
+            <button class="btn" id="copyCsv">CSV 복사</button>
+            <button class="btn" id="dlCsv" hidden>CSV 내려받기</button>
+          </span>
+        </div>
+        <div class="tbl-wrap" id="tblWrap">
+          <table>
+            <thead><tr id="tblHead"></tr></thead>
+            <tbody id="tblBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 안내 -->
+      <section class="pane about" id="pane-about" role="tabpanel" aria-labelledby="tab-about" hidden>
+        <h2>이 지도로 할 수 있는 일</h2>
+        <p>폭염 대응을 먼저 검토할 곳을 두 갈래로 나눴습니다. 사람을 돕는 단기 구호(Track 1)는 집계구(통계청 최소 통계구역, 평균 약 470명) 832곳에서, 집과 동네를 고치는 중장기 개선(Track 2)은 100m 격자에서 봅니다.</p>
+        <ul>
+          <li><b>Track 1 단기 구호 · 집계구</b> — 2025년 여름 지표면이 뜨겁고 65세 이상 비율이 높은 곳. 무더위쉼터, 쿨링포그, 안부 확인처럼 올여름 바로 할 수 있는 일의 대상입니다.</li>
+          <li><b>Track 2 중장기 개선 · 100m 격자</b> — 오래된 주거 지붕이 몰려 있고, 5년 사이 건물이 늘거나 주변보다 더 뜨거워진 곳. 쿨루프, 녹화, 그늘처럼 물리 환경을 바꾸는 사업의 대상입니다. 사업이 지붕과 골목 단위로 이뤄지므로 크기가 같은 1ha 격자로 계산합니다.</li>
+        </ul>
+
+        <h3>점수 계산</h3>
+        <p>각 지표를 표준점수(Z)로 바꿔 더했습니다. 0이 평균이고, 1이 오를 때마다 1표준편차만큼 높다는 뜻입니다. 상위 10%를 우선 검토 대상으로 표시합니다.</p>
+        <ul>
+          <li>Track 1 = Z(2025 여름 평균 지표면온도) + Z(65세 이상 비율) · 집계구 832곳 기준, 상위 83곳</li>
+          <li>Track 2 = Z(건물밀도 변화 ΔNDBI) + Z(노후 주거 지붕 면적) + Z(상대 지표면온도 변화 ΔRLST) · 주거 지붕이 1,000m² 이상인 격자 1,174칸 기준, 상위 117칸</li>
+        </ul>
+
+        <h3>자료</h3>
+        <ul>
+          <li>지표면온도·건물밀도: Landsat 8 Collection 2 Level-2, 2020·2025년 5~9월 평균 합성 (USGS, Google Earth Engine)</li>
+          <li>식생지수 SAVI와 실사 영상: Sentinel-2 Harmonized, 10m (ESA Copernicus)</li>
+          <li>인구·주택: 통계청 SGIS 2024 집계구 통계, 집계구 경계 2025년 2분기</li>
+          <li>노후 주거 지붕: 국토교통부 GIS건물통합정보. 주용도가 단독·공동주택이고 1999년 이전에 사용승인된 건물의 지붕 면적</li>
+          <li>집계구 값은 위성 화소를 집계구 면적 비율로 가중한 평균, 격자 값은 100m 칸 안의 평균·합계입니다.</li>
+        </ul>
+
+        <h3>읽을 때 주의할 점</h3>
+        <ul>
+          <li>지표면온도는 오전 11시 무렵 위성이 잰 <b>땅·지붕 표면의 온도</b>입니다. 사람이 느끼는 기온과 다르며, 기온보다 훨씬 높게 나옵니다.</li>
+          <li>Landsat 온도 산출물이 비어 있는 거주 집계구 67곳(32,590명)은 점수가 없습니다. 이 결측은 저지대 시가지에 조금 몰려 있어, 지도에서 회색으로 표시한 곳도 따로 확인이 필요합니다.</li>
+          <li>SGIS는 5 미만의 값을 공개하지 않아 작은 집계구의 고령 비율에는 오차가 있을 수 있습니다.</li>
+          <li>산자락의 넓은 집계구는 숲이 평균 온도를 낮춰, 주민이 사는 곳의 실제 노출보다 낮게 보일 수 있습니다.</li>
+          <li>재건축·신개발이 진행 중인 격자(21칸)는 건물 자료에 철거 전 건물이 남아 있을 수 있어 Track 2 순위에서 빼고 따로 표시했습니다. 새로 지은 일부 아파트 단지는 건물 자료에 아직 없을 수 있습니다.</li>
+          <li>우선순위는 검토 순서를 제안할 뿐이며 사업 대상을 확정하지 않습니다. 현장 확인과 함께 쓰십시오.</li>
+        </ul>
+
+        <h3>논문·코드</h3>
+        <p>배준환·박현재, 「다중위성 빅데이터 기반의 도심 열환경 분석과 기후 적응 정책 제언: 광주광역시 북구를 중심으로」, 한국기후변화학회지 투고 중. 분석 코드와 자료: <a href="https://github.com/baejjunhwan/ding" target="_blank" rel="noopener">github.com/baejjunhwan/ding</a></p>
+        <h3>문의</h3>
+        <p>전남대학교 디지털서비스융합학과 배준환 · <span class="mail">cnu123@jnu.ac.kr</span> <button class="btn sm" id="copyMail">주소 복사</button></p>
+      </section>
+    </aside>
+
+    <div class="mapwrap">
+      <div id="map" aria-label="북구 집계구 지도"></div>
+      <div class="basemap" role="group" aria-label="배경 지도">
+        <div class="bm-row">
+          <button data-base="s2" aria-pressed="true" title="Sentinel-2 2025 실사 영상(북구 범위)">위성 2025</button>
+          <button data-base="esri" aria-pressed="false" title="Esri World Imagery">위성 지도</button>
+          <button data-base="osm" aria-pressed="false" title="OpenStreetMap 일반 지도">일반 지도</button>
+          <button data-base="none" aria-pressed="false">배경 없음</button>
+        </div>
+        <label class="bm-op"><span>채움</span><input type="range" id="opacity" min="0.15" max="1" step="0.05" value="0.78" aria-label="집계구 채움 진하기"></label>
+      </div>
+      <div class="mapnote" id="mapNote" hidden></div>
+      <div class="swipe" id="swipe" hidden><div class="bar"></div><div class="knob" role="slider" tabindex="0" aria-label="2020·2025 비교 위치" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">⇆</div></div>
+      <div class="swipe-tag" id="tagL" hidden>2020</div>
+      <div class="swipe-tag" id="tagR" hidden>2025</div>
+      <div class="loading" id="loading">지도를 불러오는 중…</div>
+
+      <aside class="detail" id="detail" hidden aria-labelledby="dName">
+        <div class="d-head">
+          <div style="min-width:0">
+            <h2 id="dName"></h2>
+            <div class="code num" id="dCode"></div>
+          </div>
+          <button class="x" id="dClose" aria-label="닫기">×</button>
+        </div>
+        <div class="d-body" id="dBody"></div>
+      </aside>
+    </div>
+  </div>
+</div>

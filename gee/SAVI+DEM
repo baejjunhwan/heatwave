@@ -1,0 +1,61 @@
+// 1. 대한민국 읍면동(EMD) 데이터에서 광주광역시 '북구'만 필터링
+var korea_emd = ee.FeatureCollection("projects/lateral-plane-500605-i8/assets/emdyy");
+var bukgu_dong = korea_emd.filter(ee.Filter.stringStartsWith('EMD_CD', '29170'));
+var bukgu_boundary = bukgu_dong.geometry(); // 북구 전체 경계 생성
+
+// 1-1. 고도(DEM) 데이터 불러오기 및 Float 강제 변환
+var dem = ee.Image('USGS/SRTMGL1_003').select('elevation').rename('DEM').toFloat();
+
+// 2. Sentinel-2 구름 마스킹 함수
+function maskS2clouds(image) {
+  var qa = image.select('QA60');
+  var mask = qa.bitwiseAnd(1 << 10).eq(0).and(qa.bitwiseAnd(1 << 11).eq(0));
+  return image.updateMask(mask).divide(10000);
+}
+
+// 3. 연도별 여름철(5~10월) SAVI 산출 함수
+function getAnnualSAVI(year) {
+  var s2Collection = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+    .filterBounds(bukgu_boundary)
+    .filterDate(year + '-05-01', year + '-10-31')
+    .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30))
+    .map(maskS2clouds);
+    
+  var calcSAVI = function(img) {
+    var savi = img.expression(
+      '((NIR - RED) / (NIR + RED + 0.5)) * 1.5', {
+        'NIR': img.select('B8'),
+        'RED': img.select('B4')
+      }).rename('SAVI');
+    return img.addBands(savi);
+  };
+  
+  return s2Collection.map(calcSAVI).select('SAVI').max().clip(bukgu_boundary);
+}
+
+// 4. 2020년, 2025년 SAVI 생성 (둘 다 Float 타입)
+var savi2020 = getAnnualSAVI(2020).rename('SAVI_2020');
+var savi2025 = getAnnualSAVI(2025).rename('SAVI_2025');
+
+// SAVI 두 개를 하나의 파일로 묶기
+var combinedSAVI = savi2020.addBands(savi2025);
+
+// 5. SAVI 이미지(TIF) 다운로드 Task 
+Export.image.toDrive({
+  image: combinedSAVI,
+  description: 'Bukgu_SAVI_2020_2025_Raster', 
+  folder: 'GEE_Exports',
+  scale: 10, 
+  region: bukgu_boundary, 
+  maxPixels: 1e13
+});
+
+// 6. DEM 이미지(TIF) 다운로드 Task 
+Export.image.toDrive({
+  image: dem,
+  description: 'Bukgu_DEM_Raster', 
+  folder: 'GEE_Exports',
+  scale: 10, 
+  region: bukgu_boundary, 
+  maxPixels: 1e13
+});
