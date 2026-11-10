@@ -6,7 +6,7 @@ const { chromium } = require('playwright');
   await p.route(/fonts\.(googleapis|gstatic)\.com|arcgisonline|openstreetmap/, (r) => r.abort());
   await p.goto('http://localhost:8767/#ind'); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(800);
   const box = await p.locator('#map').boundingBox();
-  for (const k of ['drl', 'dnb', 'oldr', 'abs100', 'abs']) {
+  for (const k of ['drl', 'dnb', 'oldr', 'abs100', 'savi10', 'abs']) {
     await p.check(`#indList input[value=${k}]`); await p.waitForTimeout(1200);
     const out = [];
     for (const [fx, fy] of [[0.45, 0.6], [0.6, 0.55]]) {

@@ -20,7 +20,7 @@
 | `analysis/` | 논문(v3) 분석: 격자 회귀·공간오차모형, 집계구 회귀, 집계구판 Track 1·2, 그림 |
 | `track2_grid/` | Track 2 100 m 격자판: 입력표 만들기 → 점수·강건성 → 결과표 → 성분 점검 → 지도 그림 |
 | `track1_residential/` | Track 1 노출을 집계구 전체 평균 대신 주거용 건물 위 평균으로 바꿨을 때의 비교(강건성 점검) |
-| `web/` | 정책지도. `src/`(화면 코드), `build_web_data.py`(집계구)·`build_grid_t2.py`(Track 2 격자)·`build_grid_layers.py`(지표 탭 100 m 격자 지표 4종)·`build_dong_lines.py`(행정동 경계) 자료 변환, `assemble.py`(배포본 조립), `site/`(배포본), `test/`(Playwright 점검) |
+| `web/` | 정책지도. `src/`(화면 코드), `build_web_data.py`(집계구)·`build_grid_t2.py`(Track 2 격자)·`build_grid_layers.py`(지표 탭 100 m 격자 지표 4종과 10 m 식생지수)·`build_dong_lines.py`(행정동 경계) 자료 변환, `assemble.py`(배포본 조립), `site/`(배포본), `test/`(Playwright 점검) |
 | `data/` | 입력 자료(아래 표) |
 | `results/`, `figs/` | 산출 결과표와 그림 |
 
@@ -47,6 +47,7 @@ pip install -r requirements.txt
 | `residential_lst/Bukgu_OA_LST25_residential_house.csv` | 집계구별 2025년 여름 지표면온도: 집계구 전체 평균과 주거 건물(단독·공동주택) 위 평균 | `gee/track1_residential_lst.js` |
 | `residential_lst/Bukgu_OA_LST25_residential_mixed.csv` | 위와 같고 근린생활시설 포함 | 〃 |
 | `basemap/Sentinel2_TrueColor_2020_Bukgu.tif` | 정책지도 위성 비교용 Sentinel-2 2020년 실사 영상 | GEE |
+| `vegetation/Bukgu_SAVI_10m.tif` | 식생지수 SAVI 2020·2025, Sentinel-2 10 m(EPSG:5179, 4장 격자와 같은 원점) — 정책지도 지표 탭 | `gee/savi_10m.js` |
 
 건물 자료의 원자료는 국토교통부 GIS건물통합정보(광주 북구)이며, 이 저장소에는 원자료가 아니라 격자로 집계한 면적만 담았습니다. "노후 지붕 면적"은 건물 외곽선의 수평투영 면적으로, 지붕 면적의 근사값입니다. GEE 스크립트의 자산 경로(`projects/lateral-plane-500605-i8/assets/...`)는 작성자 계정의 것이므로, 다시 실행하려면 본인 자산으로 올린 뒤 경로를 바꾸십시오.
 

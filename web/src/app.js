@@ -65,7 +65,8 @@
   }
   function gridText(ll) {
     const I = IND[S.ind], G2 = RM.grid[I.grid], t = gridAt(I.grid, ll);
-    return t === null ? '100m 칸 · 값 없음' : `100m 칸 · ${esc(I.short)} <span class="num">${fmt(t, G2.nd, G2.signed)}${G2.unit ? ' ' + G2.unit : ''}</span>`;
+    const cl = I.cell || '100m 칸';
+    return t === null ? `${cl} · 값 없음` : `${cl} · ${esc(I.short)} <span class="num">${fmt(t, G2.nd, G2.signed)}${G2.unit ? ' ' + G2.unit : ''}</span>`;
   }
 
   // ---------------------------------------------------------------- formatting
@@ -417,7 +418,7 @@
       const lab = (i) => (i === 0 ? `${f(br[0])}${u} 미만` : i === cols.length - 1 ? `${f(br[br.length - 1])}${u} 이상` : `${f(br[i - 1])} ~ ${f(br[i])}${u}`);
       lg = cols.slice().reverse().map((c, j) => legendRow(c, lab(cols.length - 1 - j))).join('');
       lg = `<div class="label">${esc(I.legend || I.name)}</div>${lg}`;
-      lg += `<p class="note">${esc(I.gridNote)} 선은 행정동 경계입니다. 지도 위에 마우스를 올리면 그 칸의 값이 나옵니다.</p>`;
+      lg += `<p class="note">${esc(I.gridNote)} 선은 행정동 경계입니다. 지도 위에 마우스를 올리면 그 자리의 값이 나옵니다.</p>`;
     } else {
       const R = RAMP[I.ramp], br = I.breaks;
       const u = I.unit;
@@ -433,7 +434,7 @@
     $('#indLegend').innerHTML = lg;
     if (I.gridOnly) {
       const G2 = RM.grid[I.grid], u = G2.unit ? ' ' + G2.unit : '', f = (x) => fmt(x, G2.nd, G2.signed);
-      $('#indNote').innerHTML = `<h3>${esc(I.name)}</h3><p class="why">${esc(I.desc)}</p><p class="note">값이 있는 ${nf.format(G2.n)}칸 평균 ${f(G2.mean)}${u} · 범위 ${f(G2.min)} ~ ${f(G2.max)}${u}</p>`;
+      $('#indNote').innerHTML = `<h3>${esc(I.name)}</h3><p class="why">${esc(I.desc)}</p><p class="note">값이 있는 ${nf.format(G2.n)}${I.cell ? '화소' : '칸'} 평균 ${f(G2.mean)}${u} · 범위 ${f(G2.min)} ~ ${f(G2.max)}${u}</p>`;
       return;
     }
     $('#indNote').innerHTML = `<h3>${esc(I.name)}</h3><p class="why">${esc(I.desc)}</p><p class="note">북구 832곳 평균 ${fmt(META.mean[S.ind], I.nd, I.signed)}${I.unit} · 범위 ${fmt(META.ranges[S.ind][0], I.nd, I.signed)} ~ ${fmt(META.ranges[S.ind][1], I.nd, I.signed)}${I.unit}</p>`;
@@ -581,6 +582,9 @@
         desc: 'Sentinel-2 10m 영상으로 구한 토양조정 식생지수입니다. 클수록 녹지가 많습니다. 우선순위 점수에는 들어가지 않지만, 집계구 분석에서 지표면온도를 가장 크게 낮추는 요인이었습니다.' },
     };
     IND.dem = { name: '평균 고도', short: '고도', unit: 'm', nd: 0 };
+    IND.savi10 = { name: '식생지수 SAVI (2025)', short: 'SAVI', unit: '', nd: 2, grid: 'savi10', gridOnly: true, cell: '10m 화소', legend: '식생지수 SAVI 2025',
+      gridNote: 'Sentinel-2 원 해상도인 10m 화소 그대로 칠했습니다. 클수록 녹지가 많고, 0.1 아래는 건물·포장면입니다.',
+      desc: 'Sentinel-2 10m 영상(2025년 5~10월 중 가장 푸를 때)으로 구한 토양조정 식생지수입니다. 우선순위 점수에는 들어가지 않지만, 집계구 분석에서 지표면온도를 가장 크게 낮추는 요인이었습니다. 10m 화소라 골목 가로수, 마당, 작은 공원까지 보여 녹화할 자리를 찾는 데 쓸 수 있습니다.' };
     IND.abs100 = { name: '2025 여름 지표면온도 (100m 격자)', short: '지표면온도', unit: '℃', nd: 1, grid: 'abs25', gridOnly: true, legend: '칸별 2025 여름 평균 지표면온도',
       gridNote: '북구 전역 100m 칸. 집계구와 관계없이 칸마다 계산했고, 위성 산출물에 값이 없는 칸(일부 신축 단지 등)은 비워 두었습니다.',
       desc: '집계구와 관계없이 북구 전역을 100m 칸으로 나눠 본 2025년 5~9월 평균 지표면온도입니다. 집계구 지표와 같은 Landsat 8 관측이며, 열적외선 센서의 원래 해상도(100m)에 맞춘 값이라 산·하천·캠퍼스처럼 사람이 살지 않아 집계구 점수에서 빠진 곳도 볼 수 있습니다. 우선순위 점수에는 쓰지 않습니다.' };
@@ -661,7 +665,7 @@
     map.on('zoomend', lab); lab();
 
     // UI wiring
-    $('#indList').innerHTML = ['abs', 'eld', 'drl', 'dnb', 'oldr', 'abs100', 'savi'].map((k) => `<label><input type="radio" name="ind" value="${k}"><span>${esc(IND[k].name)}<small>${{ abs: 'Track 1 · 노출도 · 집계구', eld: 'Track 1 · 민감도 · 집계구', drl: 'Track 2 구성 · 온도 변화 · 100m 격자', dnb: 'Track 2 구성 · 개발 변화 · 100m 격자', oldr: 'Track 2 구성 · 노후 건물 · 100m 격자', abs100: '참고 · 100m 격자', savi: '참고 · 녹지 · 집계구' }[k]}</small></span></label>`).join('');
+    $('#indList').innerHTML = ['abs', 'eld', 'drl', 'dnb', 'oldr', 'abs100', 'savi10'].map((k) => `<label><input type="radio" name="ind" value="${k}"><span>${esc(IND[k].name)}<small>${{ abs: 'Track 1 · 노출도 · 집계구', eld: 'Track 1 · 민감도 · 집계구', drl: 'Track 2 구성 · 온도 변화 · 100m 격자', dnb: 'Track 2 구성 · 개발 변화 · 100m 격자', oldr: 'Track 2 구성 · 노후 건물 · 100m 격자', abs100: '참고 · 100m 격자', savi10: '참고 · 녹지 · 10m 화소' }[k]}</small></span></label>`).join('');
     $('#indList').addEventListener('change', (e) => { S.ind = e.target.value; if (!IND[S.ind].grid) S.grid = false; if (IND[S.ind].gridOnly) loadGridV(IND[S.ind].grid); renderInd(); restyle(); });
     $('#gridChk').addEventListener('change', (e) => { S.grid = e.target.checked; renderInd(); restyle(); });
     $('#compOutline').addEventListener('change', (e) => { S.compOutline = e.target.checked; restyle(); });

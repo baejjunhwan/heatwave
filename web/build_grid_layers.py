@@ -81,6 +81,33 @@ for kname, s in VAL.items():
     meta['grid'][kname] = {'breaks': br, 'colors': cols, 'enc': [off, sc], 'nd': ndp, 'signed': sg, 'unit': unit,
                            'n': int(len(t)), 'mean': round(float(t.mean()), 3), 'min': round(float(t.min()), 3), 'max': round(float(t.max()), 3)}
     print(f'{kname}: n {len(t)}  {t.min():.3f} ~ {t.max():.3f}  mean {t.mean():.3f}')
+
+# ---- 식생지수 SAVI 2025, Sentinel-2 원 해상도 10 m (GEE savi_10m.js) ------------------------
+sv_path = os.path.join(DATA, 'vegetation', 'Bukgu_SAVI_10m.tif')
+if os.path.exists(sv_path):
+    SA, sg = read(sv_path)                       # 밴드 SAVI_2020, SAVI_2025, 값 없음 −9999
+    sx0, sy0 = sg[0], sg[1]; assert abs(sg[2] - 10) < 1e-6
+    SV = np.where(SA[..., 1] > -9000, SA[..., 1], np.nan)
+    PW2 = 2000; PH2 = int(round(PW2 * (Y1 - Y0) / (X1 - X0)))
+    xs2 = X0 + (np.arange(PW2) + .5) * (X1 - X0) / PW2; ys2 = Y1 - (np.arange(PH2) + .5) * (Y1 - Y0) / PH2
+    X2, Y2 = tm5179.forward(*imerc(*np.meshgrid(xs2, ys2)))
+    cc = np.floor((X2 - sx0) / 10).astype(int); rr = np.floor((sy0 - Y2) / 10).astype(int)
+    inb = (cc >= 0) & (rr >= 0) & (cc < SV.shape[1]) & (rr < SV.shape[0])
+    A = np.full(X2.shape, np.nan); A[inb] = SV[rr[inb], cc[inb]]
+    br, cols = [0.1, 0.2, 0.3, 0.45], ['#e7f2de', '#bcdea6', '#86c06e', '#4f9c45', '#256c2f']
+    img = np.zeros(A.shape + (4,), np.uint8); idx = np.digitize(A, br)
+    for i, c in enumerate(cols):
+        m = (idx == i) & ~np.isnan(A); img[m, :3] = [int(c[j:j + 2], 16) for j in (1, 3, 5)]; img[m, 3] = 225
+    Image.fromarray(img, 'RGBA').quantize(colors=8, method=Image.Quantize.FASTOCTREE).save(os.path.join(OUT, 'grid_savi10.png'), optimize=True)
+    off, sc = -0.3, 200                          # 0.005 단위, 8비트에 들어가도록 G 채널만 사용
+    v = np.zeros(A.shape, np.int64); ok = ~np.isnan(A)
+    v[ok] = np.clip(np.round((A[ok] - off) * sc) + 1, 1, 255)
+    rgb = np.zeros(A.shape + (3,), np.uint8); rgb[..., 1] = v
+    Image.fromarray(rgb, 'RGB').save(os.path.join(OUT, 'grid_savi10_v.png'), optimize=True)
+    t = SV[~np.isnan(SV)]
+    meta['grid']['savi10'] = {'breaks': br, 'colors': cols, 'enc': [off, sc], 'nd': 2, 'signed': False, 'unit': '',
+                              'n': int(t.size), 'mean': round(float(t.mean()), 3), 'min': round(float(t.min()), 3), 'max': round(float(t.max()), 3)}
+    print(f'savi10: {t.size} px  {t.min():.3f} ~ {t.max():.3f}  mean {t.mean():.3f}  png {PW2}x{PH2}')
 meta['px'] = [PW, PH]
 
 # ---- 위성 비교 탭: 건물밀도가 크게 늘어난 곳(ΔNDBI ≥ 0.10 인 칸이 이어진 묶음) 상위 8곳 -------------
