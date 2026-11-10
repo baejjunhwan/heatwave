@@ -40,6 +40,33 @@
   let GT, G = {}, T2BYOA = {}, t2Layer, oaRenderer;
   const isCell = (id) => typeof id === 'string' && id[0] === 'g';
   const t2Mode = () => S.track === 't2' && S.tab !== 'ind' && S.tab !== 'comp';
+  // 100m grid value lookup: grid_<key>_v.png holds a 16-bit integer v in R·G (0 = no data); value = off + (v−1)/scale
+  const gridOnly = () => S.tab === 'ind' && IND && IND[S.ind] && IND[S.ind].gridOnly;
+  const GV = {};
+  let lastLL = null, dongLine = null;
+  function loadGridV(k) {
+    if (GV[k]) return;
+    GV[k] = 'loading';
+    const im = new Image();
+    im.onload = () => { const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const x = c.getContext('2d'); x.drawImage(im, 0, 0); GV[k] = { w: im.width, h: im.height, d: x.getImageData(0, 0, im.width, im.height).data }; };
+    im.onerror = () => { delete GV[k]; };
+    im.src = `data/grid_${k}_v.png`;
+  }
+  function gridAt(k, ll) {
+    const g = GV[k];
+    if (!ll || !g || g === 'loading') return null;
+    const R = 6378137, mx = (lon) => lon * Math.PI / 180 * R, my = (lat) => R * Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360));
+    const [[la0, lo0], [la1, lo1]] = RM.bounds;
+    const px = Math.floor((mx(ll.lng) - mx(lo0)) / (mx(lo1) - mx(lo0)) * g.w), py = Math.floor((my(la1) - my(ll.lat)) / (my(la1) - my(la0)) * g.h);
+    if (px < 0 || py < 0 || px >= g.w || py >= g.h) return null;
+    const o = (py * g.w + px) * 4, v = g.d[o] * 256 + g.d[o + 1];
+    const e = RM.grid[k].enc;
+    return v ? e[0] + (v - 1) / e[1] : null;
+  }
+  function gridText(ll) {
+    const I = IND[S.ind], G2 = RM.grid[I.grid], t = gridAt(I.grid, ll);
+    return t === null ? '100m 칸 · 값 없음' : `100m 칸 · ${esc(I.short)} <span class="num">${fmt(t, G2.nd, G2.signed)}${G2.unit ? ' ' + G2.unit : ''}</span>`;
+  }
 
   // ---------------------------------------------------------------- formatting
   const fmt = (v, nd, signed) => {
@@ -84,7 +111,7 @@
     if (S.tab === 'comp') return Object.assign(st, { fillOpacity: 0, opacity: S.compOutline ? 0.7 : 0 });
     if (S.tab === 'ind') {
       const I = IND[S.ind];
-      if (S.grid && I.grid) return Object.assign(st, { fillOpacity: 0, opacity: 0.55 });
+      if ((S.grid || I.gridOnly) && I.grid) return Object.assign(st, { fillOpacity: 0, opacity: I.gridOnly ? 0 : 0.55 });
       const v = p[S.ind];
       if (v === undefined || v === null || (p.s !== 'ok' && S.ind !== 'eld')) return exclStyle();
       const ramp = RAMP[I.ramp];
@@ -128,9 +155,11 @@
       topLayers.addLayer(L.geoJSON(feats, { pane: 'top', renderer: topRenderer, interactive: false, style: { color: '#ffffff', weight: w[0], opacity: 0.95, fill: false } }));
       topLayers.addLayer(L.geoJSON(feats, { pane: 'top', renderer: topRenderer, interactive: false, style: { color: c, weight: w[1], opacity: 1, fill: false } }));
     }
+    // dong boundaries (100m absolute-LST view only)
+    if (dongLine) { const want = gridOnly(); if (want && !map.hasLayer(dongLine)) dongLine.addTo(map); if (!want && map.hasLayer(dongLine)) map.removeLayer(dongLine); if (want) dongLine.setStyle({ color: css('--ink') || '#1a1d21' }); }
     // grid
     Object.entries(gridLayers).forEach(([k, l]) => {
-      const on = S.tab === 'ind' && S.grid && IND[S.ind].grid === k;
+      const on = S.tab === 'ind' && (S.grid || IND[S.ind].gridOnly) && IND[S.ind].grid === k;
       if (on && !map.hasLayer(l)) l.addTo(map);
       if (!on && map.hasLayer(l)) map.removeLayer(l);
       l.setOpacity(Math.min(1, S.op + 0.1));
@@ -317,7 +346,7 @@
       h += `<div><b class="num">${nf.format(Math.round(p.ho))}<small style="font-weight:500;color:var(--muted)"> / ${nf.format(Math.round(p.ht))}</small></b><span>노후 / 전체 주택(호)</span></div></div>`;
       const ul = (arr) => `<ul>${arr.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`;
       if (p.k1) h += `<div class="box policy"><h3>검토할 수 있는 대응</h3>${ul(POLICY.t1)}</div>`;
-      h += `<div class="metrics">${['abs', 'eld', 'drl', 'dnb', 'old', 'savi', 'dem'].map((k) => metricRow(k, p)).join('')}</div>`;
+      h += `<div class="metrics">${['abs', 'eld', 'savi', 'dem'].map((k) => metricRow(k, p)).join('')}</div>`;
       h += '<p class="note">막대는 분석 대상 832곳 안에서의 위치입니다. 지표면온도는 기온이 아닙니다.</p>';
       if (n2) h += `<div><button class="btn" id="goT2">이 집계구의 Track 2 격자 보기</button></div>`;
     }
@@ -378,16 +407,17 @@
   function renderInd() {
     const I = IND[S.ind];
     $$('#indList input').forEach((r) => { r.checked = r.value === S.ind; });
-    $('#gridWrap').hidden = !I.grid;
+    $('#gridWrap').hidden = !I.grid || !!I.gridOnly;
     $('#gridChk').checked = S.grid;
     if (I.grid) $('#gridTxt').textContent = I.grid === 'rl25' ? '100m 격자로 보기 (2025 북구 평균 대비 온도)' : '100m 격자로 보기 (2020→2025 상대온도 변화)';
     let lg = '';
-    if (S.grid && I.grid) {
-      const br = RM.grid[I.grid], cols = RM.grid.colors;
-      const lab = (i) => (i === 0 ? `${fmt(br[0], 1)}℃ 미만` : i === cols.length - 1 ? `${fmt(br[br.length - 1], 1, true)}℃ 이상` : `${fmt(br[i - 1], 1, true)} ~ ${fmt(br[i], 1, true)}℃`);
+    if ((S.grid || I.gridOnly) && I.grid) {
+      const G2 = RM.grid[I.grid], br = G2.breaks, cols = G2.colors, sg = G2.signed, nd = G2.nd, u = G2.unit ? ' ' + G2.unit : '';
+      const f = (x) => fmt(x, nd, sg);
+      const lab = (i) => (i === 0 ? `${f(br[0])}${u} 미만` : i === cols.length - 1 ? `${f(br[br.length - 1])}${u} 이상` : `${f(br[i - 1])} ~ ${f(br[i])}${u}`);
       lg = cols.slice().reverse().map((c, j) => legendRow(c, lab(cols.length - 1 - j))).join('');
-      lg = `<div class="label">${I.grid === 'rl25' ? '2025 여름, 북구 평균과의 차이' : '상대온도 변화 2020→2025'}</div>${lg}`;
-      lg += `<p class="note">100m 격자 11,809개. 산·강을 포함한 북구 전체 평균이 0입니다. 집계구 경계는 선으로만 표시합니다.</p>`;
+      lg = `<div class="label">${esc(I.legend || I.name)}</div>${lg}`;
+      lg += `<p class="note">${esc(I.gridNote)} 선은 행정동 경계입니다. 지도 위에 마우스를 올리면 그 칸의 값이 나옵니다.</p>`;
     } else {
       const R = RAMP[I.ramp], br = I.breaks;
       const u = I.unit;
@@ -401,15 +431,24 @@
       lg += legendRow('var(--excl)', S.ind === 'eld' ? '거주 인구 없음' : '값 없음 (분석 제외)');
     }
     $('#indLegend').innerHTML = lg;
+    if (I.gridOnly) {
+      const G2 = RM.grid[I.grid], u = G2.unit ? ' ' + G2.unit : '', f = (x) => fmt(x, G2.nd, G2.signed);
+      $('#indNote').innerHTML = `<h3>${esc(I.name)}</h3><p class="why">${esc(I.desc)}</p><p class="note">값이 있는 ${nf.format(G2.n)}칸 평균 ${f(G2.mean)}${u} · 범위 ${f(G2.min)} ~ ${f(G2.max)}${u}</p>`;
+      return;
+    }
     $('#indNote').innerHTML = `<h3>${esc(I.name)}</h3><p class="why">${esc(I.desc)}</p><p class="note">북구 832곳 평균 ${fmt(META.mean[S.ind], I.nd, I.signed)}${I.unit} · 범위 ${fmt(META.ranges[S.ind][0], I.nd, I.signed)} ~ ${fmt(META.ranges[S.ind][1], I.nd, I.signed)}${I.unit}</p>`;
   }
 
+  function showSite(i) {
+    const q = RM.devsites[i]; if (!q) return;
+    closeDetail();
+    const fg = L.featureGroup(q.cells.map((c) => L.polygon(c, { pane: 'sel', interactive: false, color: '#ffffff', weight: 4, opacity: 1, fill: false })));
+    q.cells.forEach((c) => fg.addLayer(L.polygon(c, { pane: 'sel', interactive: false, color: '#111111', weight: 1.6, opacity: 1, fill: false })));
+    selLayer.clearLayers(); selLayer.addLayer(fg);
+    map.fitBounds(fg.getBounds(), { padding: [60, 60], maxZoom: 16 });
+  }
   function renderComp() {
-    const rows = OK.slice().sort((a, b) => b.properties.dnb - a.properties.dnb).slice(0, 8);
-    $('#chgList').innerHTML = rows.map((f, i) => {
-      const p = f.properties;
-      return `<button data-code="${p.c}"><span class="rk num">${i + 1}</span><span>${esc(p.d)}<small>${p.c}</small></span><span class="num">ΔNDBI ${fmt(p.dnb, 3, true)}</span></button>`;
-    }).join('');
+    $('#chgList').innerHTML = (RM.devsites || []).map((q, i) => `<button data-site="${i}"><span class="rk num">${i + 1}</span><span>${esc(q.dong)}<small>${q.n}칸(약 ${q.n}ha) · 평균 ΔNDBI ${fmt(q.mean, 3, true)}</small></span><span class="num">최대 ${fmt(q.max, 3, true)}</span></button>`).join('');
     $('#compOutline').checked = S.compOutline;
   }
 
@@ -445,8 +484,8 @@
       const head = ['격자ID', '행정동', '집계구코드', '격자중심위도', '격자중심경도', '주거지붕m2', '노후주거지붕m2', '건물밀도변화dNDBI', '상대온도변화dRLST', 'Track2점수', 'Track2순위', 'Track2상위10%'];
       return [head.join(',')].concat(tableRows().map((q) => [q.id, q.d || '', q.o || '', q.la, q.lo, q.t, q.a, q.n, q.l, q.s, q.r, q.k ? 'Y' : ''].join(','))).join('\n');
     }
-    const head = ['집계구코드', '행정동', '인구', '65세이상인구', '65세이상비율', '2025여름평균지표면온도', 'Track1점수', 'Track1순위', 'Track1상위10%', '상대온도변화dRLST', '건물밀도변화dNDBI', '노후주택비율', 'SAVI2025', '평균고도DEM'];
-    const lines = tableRows().map((p) => [p.c, p.d, p.pop, p.e65, p.eld, p.abs, p.t1, p.r1, p.k1 ? 'Y' : '', p.drl, p.dnb, p.old, p.savi, p.dem].join(','));
+    const head = ['집계구코드', '행정동', '인구', '65세이상인구', '65세이상비율', '2025여름평균지표면온도', 'Track1점수', 'Track1순위', 'Track1상위10%', 'SAVI2025', '평균고도DEM'];
+    const lines = tableRows().map((p) => [p.c, p.d, p.pop, p.e65, p.eld, p.abs, p.t1, p.r1, p.k1 ? 'Y' : '', p.savi, p.dem].join(','));
     return [head.join(',')].concat(lines).join('\n');
   }
 
@@ -501,6 +540,7 @@
 
   // ---------------------------------------------------------------- tooltip
   function tip(p) {
+    if (gridOnly()) return gridText(lastLL);
     if (p.s !== 'ok') return `<b>${esc(p.d)}</b> · 점수 없음 (${EXCL_SHORT[p.s]})`;
     if (S.tab === 'ind') {
       const I = IND[S.ind];
@@ -524,20 +564,26 @@
       $('#loading').textContent = '자료를 불러오지 못했습니다. 새로고침해 주세요.'; return;
     }
     IND = {
-      abs: { name: '2025 여름 평균 지표면온도', short: '지표면온도', unit: '℃', nd: 1, ramp: 'abs', breaks: META.breaks.abs, q: true, grid: 'rl25',
+      abs: { name: '2025 여름 평균 지표면온도', short: '지표면온도', unit: '℃', nd: 1, ramp: 'abs', breaks: META.breaks.abs, q: true,
         desc: '2025년 5~9월 Landsat 8 관측의 평균입니다. 오전 11시 무렵 땅·지붕 표면의 온도라 기온과 다르고 훨씬 높게 나옵니다. Track 1의 노출도 지표입니다.' },
       eld: { name: '65세 이상 인구 비율', short: '65세 이상', unit: '%', nd: 1, ramp: 'eld', breaks: META.breaks.eld, q: true,
         desc: 'SGIS 2024 집계구 통계로 65세 이상 인구를 총인구로 나눈 값입니다. Track 1의 민감도 지표입니다. 온도 자료가 없어 점수에서 빠진 집계구도 여기에서는 비율을 보여 줍니다.' },
-      drl: { name: '상대 지표면온도 변화 ΔRLST', short: 'ΔRLST', unit: '℃', nd: 2, signed: true, ramp: 'div', breaks: [-2, -1, -0.25, 0.25, 1, 2], grid: 'drl',
-        desc: '2020년과 2025년 각각 북구 평균과의 온도 차이를 구한 뒤 그 차이가 얼마나 변했는지 봅니다. 장마였던 2020년과 폭염이던 2025년의 날씨 차이를 빼고, 주변보다 더 뜨거워졌는지를 보여 줍니다. Track 2는 이 값을 100m 격자로 씁니다.' },
-      dnb: { name: '건물밀도 변화 ΔNDBI', short: 'ΔNDBI', unit: '', nd: 3, signed: true, ramp: 'div', breaks: [-0.05, -0.02, -0.005, 0.005, 0.02, 0.05],
-        desc: '2020→2025년 Landsat 8 NDBI(정규 건물 지수)의 변화입니다. 양수는 건물·포장이 늘었다는 뜻이고, 신규 택지에서 크게 나타납니다. Track 2는 이 값을 100m 격자로 씁니다.' },
-      old: { name: '노후 주택 비율', short: '노후 주택', unit: '%', nd: 1, ramp: 'old', breaks: META.breaks.old,
-        desc: 'SGIS 2024 건축연도별 주택 통계로, 1999년 이전(건축 후 25년 이상)에 지은 주택의 비율입니다. 참고용입니다. Track 2는 같은 기준(1999년 이전)을 건물통합정보의 지붕 면적으로 바꿔 100m 격자에서 계산합니다.' },
+      drl: { name: '상대 지표면온도 변화 ΔRLST', short: 'ΔRLST', unit: '℃', nd: 2, signed: true, grid: 'drl', gridOnly: true, legend: '상대온도 변화 2020→2025',
+        gridNote: '북구 전역 100m 칸. Track 2 점수에 들어가는 값 그대로입니다.',
+        desc: '2020년과 2025년 각각 북구 평균과의 온도 차이를 구한 뒤 그 차이가 얼마나 변했는지 봅니다. 장마였던 2020년과 폭염이던 2025년의 날씨 차이를 빼고, 주변보다 더 뜨거워졌는지를 보여 줍니다. 두 해 여름 영상을 각각 평균해 만든 값이라, 칸 단위에서는 관측 날짜 차이에 따른 얼룩이 일부 남아 있습니다.' },
+      dnb: { name: '건물밀도 변화 ΔNDBI', short: 'ΔNDBI', unit: '', nd: 3, signed: true, grid: 'dnb', gridOnly: true, legend: '건물밀도 변화 2020→2025',
+        gridNote: '북구 전역 100m 칸. Track 2 점수에 들어가는 값 그대로입니다.',
+        desc: '2020→2025년 Landsat 8 NDBI(정규 건물 지수, 지표반사율 기준)의 변화입니다. 양수는 건물·포장이 늘었다는 뜻이고, 신규 택지와 재건축 현장에서 크게 나타납니다.' },
+      oldr: { name: '노후 주거 지붕 면적', short: '노후 지붕', unit: 'm²', nd: 0, grid: 'oldr', gridOnly: true, legend: '1999년 이전 주거 건물 지붕 면적 (칸당)',
+        gridNote: '주거용 건물(단독·공동주택)이 있는 100m 칸만 칠했습니다. 한 칸은 1ha(10,000m²)입니다.',
+        desc: '국토교통부 GIS건물통합정보에서 1999년 이전에 사용승인된 단독·공동주택 건물이 칸 안에서 덮는 면적입니다(건물 외곽선의 수평 면적으로, 지붕 면적의 근사값). Track 2 점수에 들어가는 값 그대로이며, 점수는 주거 지붕이 1,000m² 이상인 칸에서만 계산합니다.' },
       savi: { name: '식생지수 SAVI (2025)', short: 'SAVI', unit: '', nd: 3, ramp: 'savi', breaks: META.breaks.savi, q: true,
         desc: 'Sentinel-2 10m 영상으로 구한 토양조정 식생지수입니다. 클수록 녹지가 많습니다. 우선순위 점수에는 들어가지 않지만, 집계구 분석에서 지표면온도를 가장 크게 낮추는 요인이었습니다.' },
     };
     IND.dem = { name: '평균 고도', short: '고도', unit: 'm', nd: 0 };
+    IND.abs100 = { name: '2025 여름 지표면온도 (100m 격자)', short: '지표면온도', unit: '℃', nd: 1, grid: 'abs25', gridOnly: true, legend: '칸별 2025 여름 평균 지표면온도',
+      gridNote: '북구 전역 100m 칸. 집계구와 관계없이 칸마다 계산했고, 위성 산출물에 값이 없는 칸(일부 신축 단지 등)은 비워 두었습니다.',
+      desc: '집계구와 관계없이 북구 전역을 100m 칸으로 나눠 본 2025년 5~9월 평균 지표면온도입니다. 집계구 지표와 같은 Landsat 8 관측이며, 열적외선 센서의 원래 해상도(100m)에 맞춘 값이라 산·하천·캠퍼스처럼 사람이 살지 않아 집계구 점수에서 빠진 곳도 볼 수 있습니다. 우선순위 점수에는 쓰지 않습니다.' };
     D.features.forEach((f) => { F[f.properties.c] = f; if (f.properties.s === 'ok') OK.push(f); });
     const cellFeat = (q, dev) => ({ type: 'Feature', properties: Object.assign({ dev: !!dev }, q), geometry: { type: 'Polygon', coordinates: [q.c.map(([la, lo]) => [lo, la]).concat([[q.c[0][1], q.c[0][0]]])] } });
     GT.cells.forEach((q) => { G[q.id] = cellFeat(q, false); if (q.k && q.o) T2BYOA[q.o] = (T2BYOA[q.o] || 0) + 1; });
@@ -567,8 +613,12 @@
 
     s2[2025] = L.imageOverlay('data/s2_2025.webp', B, { pane: 's2025', attribution: 'Sentinel-2 &copy; Copernicus (가공)' });
     s2[2020] = L.imageOverlay('data/s2_2020.webp', B, { pane: 's2020' });
-    gridLayers.rl25 = L.imageOverlay('data/grid_rl25.png', B, { pane: 'grid', className: 'px' });
-    gridLayers.drl = L.imageOverlay('data/grid_drl.png', B, { pane: 'grid', className: 'px' });
+    Object.keys(RM.grid).forEach((k) => { gridLayers[k] = L.imageOverlay(`data/grid_${k}.png`, B, { pane: 'grid', className: 'px' }); });
+    fetch('data/dong_lines.json').then((r) => (r.ok ? r.json() : null)).then((j) => {
+      if (!j) return;
+      dongLine = L.geoJSON(j, { pane: 'top', interactive: false, style: { color: css('--ink') || '#1a1d21', weight: 1.4, opacity: 0.75 } });
+      restyle();
+    }).catch(() => {});
     setupTiles();
 
     oaRenderer = L.canvas({ padding: 0.4 });
@@ -577,8 +627,9 @@
       renderer: oaRenderer, style: styleFor_layer,
       onEachFeature: (f, layer) => {
         layer.bindTooltip(() => tip(f.properties), { sticky: true, className: 'tip', direction: 'top', offset: [0, -8], opacity: 1 });
-        layer.on('click', () => select(f.properties.c, { zoom: false, scroll: false }));
-        layer.on('mouseover', () => layer.setStyle({ weight: 2, color: css('--ink'), opacity: 1 }));
+        layer.on('click', () => { if (!gridOnly()) select(f.properties.c, { zoom: false, scroll: false }); });
+        layer.on('mousemove', (e) => { lastLL = e.latlng; layer.setTooltipContent(gridOnly() ? gridText(e.latlng) : tip(f.properties)); });
+        layer.on('mouseover', () => { if (!gridOnly()) layer.setStyle({ weight: 2, color: css('--ink'), opacity: 1 }); });
         layer.on('mouseout', () => oaLayer.resetStyle(layer));
       },
       attribution: '집계구 경계·통계 &copy; 통계청 SGIS',
@@ -610,8 +661,8 @@
     map.on('zoomend', lab); lab();
 
     // UI wiring
-    $('#indList').innerHTML = ['abs', 'eld', 'drl', 'dnb', 'old', 'savi'].map((k) => `<label><input type="radio" name="ind" value="${k}"><span>${esc(IND[k].name)}<small>${{ abs: 'Track 1 · 노출도', eld: 'Track 1 · 민감도', drl: 'Track 2 구성 · 온도 변화', dnb: 'Track 2 구성 · 개발 변화', old: '참고 · 노후 주택 통계', savi: '참고 · 녹지' }[k]}</small></span></label>`).join('');
-    $('#indList').addEventListener('change', (e) => { S.ind = e.target.value; if (!IND[S.ind].grid) S.grid = false; renderInd(); restyle(); });
+    $('#indList').innerHTML = ['abs', 'eld', 'drl', 'dnb', 'oldr', 'abs100', 'savi'].map((k) => `<label><input type="radio" name="ind" value="${k}"><span>${esc(IND[k].name)}<small>${{ abs: 'Track 1 · 노출도 · 집계구', eld: 'Track 1 · 민감도 · 집계구', drl: 'Track 2 구성 · 온도 변화 · 100m 격자', dnb: 'Track 2 구성 · 개발 변화 · 100m 격자', oldr: 'Track 2 구성 · 노후 건물 · 100m 격자', abs100: '참고 · 100m 격자', savi: '참고 · 녹지 · 집계구' }[k]}</small></span></label>`).join('');
+    $('#indList').addEventListener('change', (e) => { S.ind = e.target.value; if (!IND[S.ind].grid) S.grid = false; if (IND[S.ind].gridOnly) loadGridV(IND[S.ind].grid); renderInd(); restyle(); });
     $('#gridChk').addEventListener('change', (e) => { S.grid = e.target.checked; renderInd(); restyle(); });
     $('#compOutline').addEventListener('change', (e) => { S.compOutline = e.target.checked; restyle(); });
     $$('.tabs [role=tab]').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
@@ -626,6 +677,7 @@
     document.addEventListener('click', (e) => {
       const g = e.target.closest('[data-goto]'); if (g) { S.scope = 'top'; setTab(g.dataset.goto); return; }
       const b = e.target.closest('.toplist button[data-code]'); if (b) select(b.dataset.code);
+      const sb = e.target.closest('#chgList button[data-site]'); if (sb) showSite(+sb.dataset.site);
     });
     $('#tblBody').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-code]'); if (tr) select(tr.dataset.code); });
     $('#tblBody').addEventListener('keydown', (e) => { if (e.key === 'Enter') { const tr = e.target.closest('tr[data-code]'); if (tr) select(tr.dataset.code); } });

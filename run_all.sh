@@ -25,6 +25,8 @@ python3 track1_residential/03_figure.py
 # 4. 정책지도: data/boundary/ 에 SGIS 집계구 경계가 있을 때만 웹 자료를 다시 만듭니다
 if [ -f data/boundary/bnd_oa_24040_2025_2Q.shp ]; then
   python3 web/build_web_data.py
+  python3 web/build_dong_lines.py
 fi
+python3 web/build_grid_layers.py
 python3 web/build_grid_t2.py
 python3 web/assemble.py

@@ -20,7 +20,7 @@
 | `analysis/` | 논문(v3) 분석: 격자 회귀·공간오차모형, 집계구 회귀, 집계구판 Track 1·2, 그림 |
 | `track2_grid/` | Track 2 100 m 격자판: 입력표 만들기 → 점수·강건성 → 결과표 → 성분 점검 → 지도 그림 |
 | `track1_residential/` | Track 1 노출을 집계구 전체 평균 대신 주거용 건물 위 평균으로 바꿨을 때의 비교(강건성 점검) |
-| `web/` | 정책지도. `src/`(화면 코드), `build_web_data.py`·`build_grid_t2.py`(자료 변환), `assemble.py`(배포본 조립), `site/`(배포본), `test/`(Playwright 점검) |
+| `web/` | 정책지도. `src/`(화면 코드), `build_web_data.py`(집계구)·`build_grid_t2.py`(Track 2 격자)·`build_grid_layers.py`(지표 탭 100 m 격자 지표 4종)·`build_dong_lines.py`(행정동 경계) 자료 변환, `assemble.py`(배포본 조립), `site/`(배포본), `test/`(Playwright 점검) |
 | `data/` | 입력 자료(아래 표) |
 | `results/`, `figs/` | 산출 결과표와 그림 |
 

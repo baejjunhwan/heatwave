@@ -1,0 +1,10 @@
+# 중간 산출물(스크립트가 다시 만듦)
+work/
+__pycache__/
+*.pyc
+# 재배포하지 않는 원자료: SGIS 집계구 경계는 직접 내려받아 넣기
+data/boundary/
+# 웹 점검 스크린샷
+web/test/screens/
+node_modules/
+.DS_Store
